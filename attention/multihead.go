@@ -18,14 +18,14 @@ type MultiHeadConfig struct {
 // MultiHeadAttention implements multi-head attention mechanism
 type MultiHeadAttention struct {
 	config MultiHeadConfig
-	
+
 	// Linear projections for each head
-	queryProj []Matrix  // [num_heads][d_model][d_k]
-	keyProj   []Matrix  // [num_heads][d_model][d_k]
-	valueProj []Matrix  // [num_heads][d_model][d_v]
-	
+	queryProj []Matrix // [num_heads][d_model][d_k]
+	keyProj   []Matrix // [num_heads][d_model][d_k]
+	valueProj []Matrix // [num_heads][d_model][d_v]
+
 	// Output projection
-	outputProj Matrix   // [d_model][num_heads * d_v]
+	outputProj Matrix // [d_model][num_heads * d_v]
 }
 
 // NewMultiHeadAttention creates a new multi-head attention module
@@ -82,12 +82,12 @@ func (mha *MultiHeadAttention) Forward(query, key, value Matrix) (Matrix, error)
 		if err != nil {
 			return nil, fmt.Errorf("projecting query for head %d: %w", h, err)
 		}
-		
+
 		projKey, err := projectBatch(key, mha.keyProj[h])
 		if err != nil {
 			return nil, fmt.Errorf("projecting key for head %d: %w", h, err)
 		}
-		
+
 		projValue, err := projectBatch(value, mha.valueProj[h])
 		if err != nil {
 			return nil, fmt.Errorf("projecting value for head %d: %w", h, err)
@@ -95,7 +95,7 @@ func (mha *MultiHeadAttention) Forward(query, key, value Matrix) (Matrix, error)
 
 		// Initialize head output
 		headOutputs[h] = make(Matrix, batchSize)
-		
+
 		// Compute attention for each item in the batch
 		for b := 0; b < batchSize; b++ {
 			attended, _, err := DotProductAttention(projQuery[b], projKey, projValue)
@@ -131,7 +131,8 @@ func (mha *MultiHeadAttention) Forward(query, key, value Matrix) (Matrix, error)
 
 func randomMatrix(rows, cols int) Matrix {
 	mat := make(Matrix, rows)
-	scale := math.Sqrt(2.0 / float64(rows+cols)) // Xavier initialization
+	//scale := math.Sqrt(2.0 / float64(rows+cols)) // Xavier initialization
+	scale := math.Sqrt(6.0 / float64(rows+cols)) // Xavier initialization
 	for i := range mat {
 		mat[i] = make(Vector, cols)
 		for j := range mat[i] {
@@ -168,4 +169,4 @@ func projectVector(input Vector, weights Matrix) (Vector, error) {
 		}
 	}
 	return output, nil
-} 
+}

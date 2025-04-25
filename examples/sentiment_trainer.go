@@ -32,9 +32,9 @@ type Model struct {
 	KeyWeights    attention.Matrix   `json:"key_weights"`    // Key projection weights
 	ValueWeights  attention.Matrix   `json:"value_weights"`  // Value projection weights
 	OutputWeights attention.Vector   `json:"output_weights"` // Output layer weights
-	VocabSize     int               `json:"vocab_size"`
-	EmbedDim      int               `json:"embed_dim"`
-	AttnDim       int               `json:"attn_dim"`
+	VocabSize     int                `json:"vocab_size"`
+	EmbedDim      int                `json:"embed_dim"`
+	AttnDim       int                `json:"attn_dim"`
 }
 
 // NewModel creates a new sentiment analysis model
@@ -184,7 +184,7 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 	for epoch := 0; epoch < epochs; epoch++ {
 		// Create batches
 		batches := m.createBatch(trainExamples, batchSize)
-		
+
 		// Training phase
 		totalLoss := 0.0
 		correct := 0
@@ -254,7 +254,7 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 				// Compute loss with L2 regularization
 				target := batch.Targets[i]
 				loss := -(target*math.Log(prediction+1e-10) + (1-target)*math.Log(1-prediction+1e-10))
-				
+
 				// Add L2 regularization
 				l2Loss := 0.0
 				for _, w := range m.OutputWeights {
@@ -265,10 +265,10 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 
 				// Backward pass
 				error := prediction - target
-				
+
 				// Output weight gradients
 				for j := range outputGrads {
-					outputGrads[j] += error * context[j] + l2Reg * m.OutputWeights[j]
+					outputGrads[j] += error*context[j] + l2Reg*m.OutputWeights[j]
 				}
 
 				// Attention gradients
@@ -286,13 +286,13 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 						queryGrad := 0.0
 						keyGrad := 0.0
 						valueGrad := 0.0
-						
+
 						for d := range scores {
 							queryGrad += contextGrad[j] * scores[d] * keys[j][k] / math.Sqrt(float64(m.AttnDim))
 							keyGrad += contextGrad[j] * scores[d] * queries[j][k] / math.Sqrt(float64(m.AttnDim))
 							valueGrad += contextGrad[j] * scores[d]
 						}
-						
+
 						queryGrads[j][k] += queryGrad
 						keyGrads[j][k] += keyGrad
 						valueGrads[j][k] += valueGrad
@@ -331,7 +331,7 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 			totalExamples += len(batch.Embeddings)
 
 			// Print batch progress
-			if (batchIdx+1) % 10 == 0 {
+			if (batchIdx+1)%10 == 0 {
 				fmt.Printf("Epoch %d, Batch %d/%d, Loss: %.4f, Accuracy: %.2f%%\n",
 					epoch+1, batchIdx+1, len(batches),
 					batchLoss/float64(len(batch.Embeddings)),
@@ -362,7 +362,7 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 			}
 		}
 
-		if currentLR < learningRate * 0.01 {
+		if currentLR < learningRate*0.01 {
 			fmt.Println("Learning rate too small, stopping training")
 			break
 		}
@@ -392,8 +392,8 @@ func (m *Model) evaluate(examples []TrainingExample) (float64, float64) {
 
 	for _, example := range examples {
 		prediction := m.Predict(example.Text)
-		
-		loss := -(example.Sentiment*math.Log(prediction+1e-10) + 
+
+		loss := -(example.Sentiment*math.Log(prediction+1e-10) +
 			(1-example.Sentiment)*math.Log(1-prediction+1e-10))
 		totalLoss += loss
 
@@ -549,7 +549,7 @@ func loadIMDBData(filename string) ([]TrainingExample, error) {
 
 func main() {
 	// Load IMDB dataset
-	examples, err := loadIMDBData("data/imdb_1000.json")
+	examples, err := loadIMDBData("examples/data/imdb_1000.json")
 	if err != nil {
 		log.Fatalf("Failed to load IMDB data: %v", err)
 	}
@@ -581,4 +581,4 @@ func main() {
 		prediction := model.Predict(text)
 		fmt.Printf("Text: %s\nSentiment: %.2f\n\n", text, prediction)
 	}
-} 
+}

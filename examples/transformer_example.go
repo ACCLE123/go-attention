@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/takara-ai/go-attention/attention"
-	"github.com/takara-ai/go-attention/transformer"
+	"github.com/ACCLE123/go-attention/attention"
+	"github.com/ACCLE123/go-attention/transformer"
 )
 
 func main() {
@@ -16,10 +16,10 @@ func main() {
 
 	// Create a transformer layer configuration
 	config := transformer.TransformerConfig{
-		DModel:      64,   // Model dimension
-		NumHeads:    4,    // Number of attention heads
-		DHidden:     256,  // Hidden dimension in feed-forward network
-		DropoutRate: 0.1,  // Dropout rate (not used in this implementation)
+		DModel:      64,  // Model dimension
+		NumHeads:    4,   // Number of attention heads
+		DHidden:     256, // Hidden dimension in feed-forward network
+		DropoutRate: 0.1, // Dropout rate (not used in this implementation)
 	}
 
 	// Create a transformer layer
@@ -58,14 +58,14 @@ func main() {
 
 	// Demonstrate multi-head attention separately
 	fmt.Println("\nDemonstrating Multi-Head Attention:")
-	
+
 	// Create input vectors with correct dimensions
 	batchSize := 2
-	
+
 	queries := make(attention.Matrix, batchSize)
 	keys := make(attention.Matrix, batchSize)
 	values := make(attention.Matrix, batchSize)
-	
+
 	// Initialize with some random values
 	for b := 0; b < batchSize; b++ {
 		// Create query sequence
@@ -73,13 +73,13 @@ func main() {
 		for j := range queries[b] {
 			queries[b][j] = rand.Float64()*2 - 1
 		}
-		
+
 		// Create key sequence
 		keys[b] = make(attention.Vector, config.DModel)
 		for j := range keys[b] {
 			keys[b][j] = rand.Float64()*2 - 1
 		}
-		
+
 		// Create value sequence
 		values[b] = make(attention.Vector, config.DModel)
 		for j := range values[b] {
@@ -109,4 +109,4 @@ func main() {
 	for b := range attended {
 		fmt.Printf("Batch %d: %v\n", b, attended[b][:4])
 	}
-} 
+}

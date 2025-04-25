@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/takara-ai/go-attention/attention"
+	"github.com/ACCLE123/go-attention/attention"
 )
 
 // IMDBReview represents a single review from the IMDB dataset

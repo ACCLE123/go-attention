@@ -25,7 +25,7 @@ type MultiHeadAttention struct {
 	valueProj []Matrix // [num_heads][d_model][d_v]
 
 	// Output projection
-	outputProj Matrix // [d_model][num_heads * d_v]
+	outputProj Matrix // [num_heads * d_v][d_model]
 }
 
 // NewMultiHeadAttention creates a new multi-head attention module
@@ -48,20 +48,13 @@ func NewMultiHeadAttention(config MultiHeadConfig) (*MultiHeadAttention, error) 
 		outputProj: make(Matrix, config.DModel),
 	}
 
-	// Initialize projections with random weights
+	// Initialize projections with random weights by Xavier initialization
 	for h := 0; h < config.NumHeads; h++ {
 		mha.queryProj[h] = randomMatrix(config.DModel, config.DKey)
 		mha.keyProj[h] = randomMatrix(config.DModel, config.DKey)
 		mha.valueProj[h] = randomMatrix(config.DModel, config.DValue)
 	}
-
-	// Initialize output projection
-	for i := range mha.outputProj {
-		mha.outputProj[i] = make(Vector, config.NumHeads*config.DValue)
-		for j := range mha.outputProj[i] {
-			mha.outputProj[i][j] = (rand.Float64() - 0.5) / math.Sqrt(float64(config.DValue))
-		}
-	}
+	mha.outputProj = randomMatrix(config.NumHeads*config.DValue, config.DModel)
 
 	return mha, nil
 }
@@ -114,14 +107,11 @@ func (mha *MultiHeadAttention) Forward(query, key, value Matrix) (Matrix, error)
 		for h := 0; h < mha.config.NumHeads; h++ {
 			concat = append(concat, headOutputs[h][b]...)
 		}
-
-		// Project concatenated output
-		output[b] = make(Vector, mha.config.DModel)
-		for i := range output[b] {
-			for j, v := range concat {
-				output[b][i] += v * mha.outputProj[i][j]
-			}
-		}
+		output[b] = concat
+	}
+	output, err := projectBatch(output, mha.outputProj)
+	if err != nil {
+		return nil, fmt.Errorf("projecting output for head %d: %w", mha.config.NumHeads, err)
 	}
 
 	return output, nil
@@ -131,7 +121,6 @@ func (mha *MultiHeadAttention) Forward(query, key, value Matrix) (Matrix, error)
 
 func randomMatrix(rows, cols int) Matrix {
 	mat := make(Matrix, rows)
-	//scale := math.Sqrt(2.0 / float64(rows+cols)) // Xavier initialization
 	scale := math.Sqrt(6.0 / float64(rows+cols)) // Xavier initialization
 	for i := range mat {
 		mat[i] = make(Vector, cols)

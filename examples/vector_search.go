@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/takara-ai/go-attention/attention"
+	"github.com/ACCLE123/go-attention/attention"
 )
 
 // Document holds a title, some content, and an embedding vector.

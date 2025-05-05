@@ -92,20 +92,20 @@ func NewFeedForward(dModel, dHidden int) *FeedForward {
 	}
 
 	// Initialize weights with Xavier initialization
-	scale1 := math.Sqrt(2.0 / float64(dModel+dHidden))
-	scale2 := math.Sqrt(2.0 / float64(dHidden+dModel))
+	scale1 := math.Sqrt(6.0 / float64(dModel+dHidden))
+	scale2 := math.Sqrt(6.0 / float64(dHidden+dModel))
 
 	for i := range ff.W1 {
 		ff.W1[i] = make(attention.Vector, dHidden)
 		for j := range ff.W1[i] {
-			ff.W1[i][j] = (rand.Float64() - 0.5) * scale1
+			ff.W1[i][j] = (2*rand.Float64() - 1) * scale1
 		}
 	}
 
 	for i := range ff.W2 {
 		ff.W2[i] = make(attention.Vector, dModel)
 		for j := range ff.W2[i] {
-			ff.W2[i][j] = (rand.Float64() - 0.5) * scale2
+			ff.W2[i][j] = (2*rand.Float64() - 1) * scale2
 		}
 	}
 

@@ -14,12 +14,12 @@ func main() {
 	//testDotProductAttention()
 
 	// 2. Multi-Head Attention
-	fmt.Println("\n=== 2. Multi-Head Attention ===")
-	testMultiHeadAttention()
+	//fmt.Println("\n=== 2. Multi-Head Attention ===")
+	//testMultiHeadAttention()
 
 	// 3. Full Transformer Layer
 	//fmt.Println("\n=== 3. Full Transformer Layer ===")
-	//testTransformerLayer()
+	testTransformerLayer()
 }
 
 func testDotProductAttention() {

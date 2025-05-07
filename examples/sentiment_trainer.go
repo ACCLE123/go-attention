@@ -3,29 +3,25 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ACCLE123/go-attention/attention"
 	"log"
 	"math"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/ACCLE123/go-attention/attention"
 )
 
-// IMDBReview represents a single review from the IMDB dataset
 type IMDBReview struct {
 	Text  string  `json:"text"`
 	Label float64 `json:"label"`
 }
 
-// TrainingExample represents a single training instance
 type TrainingExample struct {
 	Text      string  `json:"text"`
 	Sentiment float64 `json:"sentiment"`
 }
 
-// Model represents our sentiment analysis model
 type Model struct {
 	WordEmbedding []attention.Vector `json:"word_embedding"` // Simple word embedding lookup
 	QueryWeights  attention.Matrix   `json:"query_weights"`  // Query projection weights
@@ -37,10 +33,20 @@ type Model struct {
 	AttnDim       int                `json:"attn_dim"`
 }
 
-// NewModel creates a new sentiment analysis model
+type EvaluationMetrics struct {
+	Accuracy  float64
+	Precision float64
+	Recall    float64
+	F1        float64
+	TruePos   int
+	TrueNeg   int
+	FalsePos  int
+	FalseNeg  int
+}
+
 func NewModel(vocabSize, embedDim, attnDim int) *Model {
 	// Initialize word embeddings with Xavier initialization
-	scale := math.Sqrt(2.0 / float64(embedDim))
+	scale := math.Sqrt(6.0 / float64(embedDim))
 	wordEmbedding := make([]attention.Vector, vocabSize)
 	for i := range wordEmbedding {
 		wordEmbedding[i] = make(attention.Vector, embedDim)
@@ -65,7 +71,7 @@ func NewModel(vocabSize, embedDim, attnDim int) *Model {
 	}
 
 	// Initialize output weights
-	outputWeights := make(attention.Vector, embedDim)
+	outputWeights := make(attention.Vector, attnDim)
 	for i := range outputWeights {
 		outputWeights[i] = rand.NormFloat64() * scale
 	}
@@ -82,20 +88,6 @@ func NewModel(vocabSize, embedDim, attnDim int) *Model {
 	}
 }
 
-// sigmoid computes the sigmoid function
-func sigmoid(x float64) float64 {
-	return 1.0 / (1.0 + math.Exp(-x))
-}
-
-// dotProduct computes the dot product of two vectors
-func dotProduct(a, b attention.Vector) float64 {
-	sum := 0.0
-	for i := range a {
-		sum += a[i] * b[i]
-	}
-	return sum
-}
-
 // hashWord creates a simple hash for word to vocabulary mapping
 func hashWord(word string) int {
 	hash := 0
@@ -105,13 +97,11 @@ func hashWord(word string) int {
 	return hash
 }
 
-// Batch represents a batch of training examples
 type Batch struct {
 	Embeddings []attention.Matrix
 	Targets    []float64
 }
 
-// createBatch creates a batch from examples
 func (m *Model) createBatch(examples []TrainingExample, batchSize int) []Batch {
 	var batches []Batch
 	for i := 0; i < len(examples); i += batchSize {
@@ -144,7 +134,6 @@ func (m *Model) createBatch(examples []TrainingExample, batchSize int) []Batch {
 	return batches
 }
 
-// clipGradients clips gradients to prevent explosion
 func clipGradients(grads attention.Vector, maxNorm float64) {
 	var norm float64
 	for _, g := range grads {
@@ -159,7 +148,6 @@ func clipGradients(grads attention.Vector, maxNorm float64) {
 	}
 }
 
-// Train trains the model on a dataset
 func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float64) error {
 	rand.Seed(time.Now().UnixNano())
 
@@ -198,7 +186,7 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 			queryGrads := make(attention.Matrix, m.EmbedDim)
 			keyGrads := make(attention.Matrix, m.EmbedDim)
 			valueGrads := make(attention.Matrix, m.EmbedDim)
-			outputGrads := make(attention.Vector, m.EmbedDim)
+			outputGrads := make(attention.Vector, m.AttnDim)
 
 			// Initialize gradient matrices
 			for i := 0; i < m.EmbedDim; i++ {
@@ -213,42 +201,11 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 				keys := m.project(batch.Embeddings[i], m.KeyWeights)
 				values := m.project(batch.Embeddings[i], m.ValueWeights)
 
-				// Compute attention scores
-				scores := make([]float64, len(queries))
-				maxScore := -math.MaxFloat64
-				for j := range queries {
-					scores[j] = 0
-					for k := 0; k < m.AttnDim; k++ {
-						scores[j] += queries[j][k] * keys[j][k]
-					}
-					scores[j] /= math.Sqrt(float64(m.AttnDim))
-					if scores[j] > maxScore {
-						maxScore = scores[j]
-					}
-				}
-
-				// Softmax
-				sumExp := 0.0
-				for j := range scores {
-					scores[j] = math.Exp(scores[j] - maxScore)
-					sumExp += scores[j]
-				}
-				for j := range scores {
-					scores[j] /= sumExp
-				}
-
-				// Weighted sum
-				context := make(attention.Vector, m.EmbedDim)
-				for j := range context {
-					for k := range scores {
-						for d := 0; d < m.AttnDim; d++ {
-							context[j] += scores[k] * values[k][d] * m.ValueWeights[j][d]
-						}
-					}
-				}
+				globalContext, scores, _ := attention.DotProductAttention(queries[0], keys, values)
+				//fmt.Println("len: ", len(scores))
 
 				// Final prediction
-				logit := dotProduct(context, m.OutputWeights)
+				logit := dotProduct(globalContext, m.OutputWeights)
 				prediction := sigmoid(logit)
 
 				// Compute loss with L2 regularization
@@ -264,22 +221,22 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 				batchLoss += loss
 
 				// Backward pass
-				error := prediction - target
+				backError := prediction - target
 
 				// Output weight gradients
 				for j := range outputGrads {
-					outputGrads[j] += error*context[j] + l2Reg*m.OutputWeights[j]
+					outputGrads[j] += backError*globalContext[j] + l2Reg*m.OutputWeights[j]
 				}
 
 				// Attention gradients
-				contextGrad := make(attention.Vector, m.EmbedDim)
+				contextGrad := make(attention.Vector, m.AttnDim)
 				for j := range contextGrad {
-					contextGrad[j] = error * m.OutputWeights[j]
+					contextGrad[j] = backError * m.OutputWeights[j]
 				}
 
 				// Update attention weight gradients
 				for j := range batch.Embeddings[i] {
-					if j >= m.EmbedDim {
+					if j >= m.AttnDim {
 						continue
 					}
 					for k := 0; k < m.AttnDim; k++ {
@@ -371,6 +328,20 @@ func (m *Model) Train(examples []TrainingExample, epochs int, learningRate float
 	return nil
 }
 
+// sigmoid computes the sigmoid function
+func sigmoid(x float64) float64 {
+	return 1.0 / (1.0 + math.Exp(-x))
+}
+
+// dotProduct computes the dot product of two vectors
+func dotProduct(a, b attention.Vector) float64 {
+	sum := 0.0
+	for i := range a {
+		sum += a[i] * b[i]
+	}
+	return sum
+}
+
 // project applies weight matrix to input
 func (m *Model) project(input attention.Matrix, weights attention.Matrix) attention.Matrix {
 	output := make(attention.Matrix, len(input))
@@ -385,13 +356,47 @@ func (m *Model) project(input attention.Matrix, weights attention.Matrix) attent
 	return output
 }
 
+func loadIMDBData(filename string) ([]TrainingExample, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %v", err)
+	}
+
+	// Split into lines and parse each line as a separate JSON object
+	lines := strings.Split(string(data), "\n")
+	examples := make([]TrainingExample, 0, len(lines))
+
+	for _, line := range lines {
+		if len(strings.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		var review IMDBReview
+		if err := json.Unmarshal([]byte(line), &review); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON line: %v", err)
+		}
+
+		// Clean the text by removing HTML tags
+		text := strings.ReplaceAll(review.Text, "<br />", " ")
+		text = strings.ReplaceAll(text, "<br/>", " ")
+		text = strings.ReplaceAll(text, "\\/", "/")
+
+		examples = append(examples, TrainingExample{
+			Text:      text,
+			Sentiment: review.Label,
+		})
+	}
+
+	return examples, nil
+}
+
 // evaluate computes loss and accuracy on a dataset
 func (m *Model) evaluate(examples []TrainingExample) (float64, float64) {
 	totalLoss := 0.0
 	correct := 0
 
 	for _, example := range examples {
-		prediction := m.Predict(example.Text)
+		prediction := m.predict(example.Text)
 
 		loss := -(example.Sentiment*math.Log(prediction+1e-10) +
 			(1-example.Sentiment)*math.Log(1-prediction+1e-10))
@@ -411,7 +416,21 @@ func (m *Model) evaluate(examples []TrainingExample) (float64, float64) {
 }
 
 // Predict makes a prediction on new text
-func (m *Model) Predict(text string) float64 {
+func (m *Model) Predict(tests []TrainingExample) float64 {
+	right, all := 0, len(tests)
+	for _, test := range tests {
+		ans := m.predict(test.Text)
+		if test.Sentiment == 1 && ans >= 0.5 {
+			right++
+		}
+		if test.Sentiment == 0 && ans < 0.5 {
+			right++
+		}
+	}
+	return float64(right) / float64(all)
+}
+
+func (m *Model) predict(text string) float64 {
 	// Tokenize
 	words := strings.Fields(strings.ToLower(text))
 	if len(words) > 100 {
@@ -434,46 +453,7 @@ func (m *Model) Predict(text string) float64 {
 	keys := m.project(embeddings, m.KeyWeights)
 	values := m.project(embeddings, m.ValueWeights)
 
-	// Compute attention scores
-	scores := make([]float64, len(queries))
-	maxScore := -math.MaxFloat64
-	for j := range queries {
-		scores[j] = 0
-		for k := 0; k < m.AttnDim; k++ {
-			scores[j] += queries[j][k] * keys[j][k]
-		}
-		scores[j] /= math.Sqrt(float64(m.AttnDim))
-		if scores[j] > maxScore {
-			maxScore = scores[j]
-		}
-	}
-
-	// Softmax
-	sumExp := 0.0
-	for j := range scores {
-		scores[j] = math.Exp(scores[j] - maxScore)
-		sumExp += scores[j]
-	}
-	if sumExp > 0 {
-		for j := range scores {
-			scores[j] /= sumExp
-		}
-	} else {
-		// If all scores are very negative, use uniform attention
-		for j := range scores {
-			scores[j] = 1.0 / float64(len(scores))
-		}
-	}
-
-	// Weighted sum
-	context := make(attention.Vector, m.EmbedDim)
-	for j := range context {
-		for k := range scores {
-			for d := 0; d < m.AttnDim; d++ {
-				context[j] += scores[k] * values[k][d] * m.ValueWeights[j][d]
-			}
-		}
-	}
+	context, _, _ := attention.DotProductAttention(queries[0], keys, values)
 
 	// Final prediction
 	logit := dotProduct(context, m.OutputWeights)
@@ -512,44 +492,9 @@ func LoadModel(filename string) (*Model, error) {
 	return &model, nil
 }
 
-// loadIMDBData loads the IMDB review dataset
-func loadIMDBData(filename string) ([]TrainingExample, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %v", err)
-	}
-
-	// Split into lines and parse each line as a separate JSON object
-	lines := strings.Split(string(data), "\n")
-	examples := make([]TrainingExample, 0, len(lines))
-
-	for _, line := range lines {
-		if len(strings.TrimSpace(line)) == 0 {
-			continue
-		}
-
-		var review IMDBReview
-		if err := json.Unmarshal([]byte(line), &review); err != nil {
-			return nil, fmt.Errorf("failed to parse JSON line: %v", err)
-		}
-
-		// Clean the text by removing HTML tags
-		text := strings.ReplaceAll(review.Text, "<br />", " ")
-		text = strings.ReplaceAll(text, "<br/>", " ")
-		text = strings.ReplaceAll(text, "\\/", "/")
-
-		examples = append(examples, TrainingExample{
-			Text:      text,
-			Sentiment: review.Label,
-		})
-	}
-
-	return examples, nil
-}
-
 func main() {
 	// Load IMDB dataset
-	examples, err := loadIMDBData("examples/data/imdb_1000.json")
+	examples, err := loadIMDBData("examples/data/train.json")
 	if err != nil {
 		log.Fatalf("Failed to load IMDB data: %v", err)
 	}
@@ -569,16 +514,7 @@ func main() {
 	}
 	fmt.Println("Model saved to sentiment_model.json")
 
-	// Test the model
-	testTexts := []string{
-		"This movie was absolutely fantastic! The acting was superb.",
-		"Terrible waste of time. The worst movie I've ever seen.",
-		"An okay film, nothing special but decent entertainment.",
-	}
-
-	fmt.Println("\nTesting model predictions:")
-	for _, text := range testTexts {
-		prediction := model.Predict(text)
-		fmt.Printf("Text: %s\nSentiment: %.2f\n\n", text, prediction)
-	}
+	tests, err := loadIMDBData("examples/data/test.json")
+	ans := model.Predict(tests)
+	fmt.Println("ans: ", ans)
 }

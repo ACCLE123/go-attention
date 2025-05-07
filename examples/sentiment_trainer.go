@@ -416,18 +416,45 @@ func (m *Model) evaluate(examples []TrainingExample) (float64, float64) {
 }
 
 // Predict makes a prediction on new text
-func (m *Model) Predict(tests []TrainingExample) float64 {
-	right, all := 0, len(tests)
+func (m *Model) Predict(tests []TrainingExample) (float64, float64) {
+	all := len(tests)
+	var TP, FP, FN, TN int
+
 	for _, test := range tests {
 		ans := m.predict(test.Text)
-		if test.Sentiment == 1 && ans >= 0.5 {
-			right++
+		predicted := 0
+		if ans >= 0.5 {
+			predicted = 1
 		}
-		if test.Sentiment == 0 && ans < 0.5 {
-			right++
+
+		if test.Sentiment == 1 {
+			if predicted == 1 {
+				TP++
+			} else {
+				FN++
+			}
+		} else {
+			if predicted == 1 {
+				FP++
+			} else {
+				TN++
+			}
 		}
 	}
-	return float64(right) / float64(all)
+	accuracy := float64(TP+TN) / float64(all)
+	precision := 0.0
+	if TP+FP > 0 {
+		precision = float64(TP) / float64(TP+FP)
+	}
+	recall := 0.0
+	if TP+FN > 0 {
+		recall = float64(TP) / float64(TP+FN)
+	}
+	f1 := 0.0
+	if precision+recall > 0 {
+		f1 = 2 * (precision * recall) / (precision + recall)
+	}
+	return accuracy, f1
 }
 
 func (m *Model) predict(text string) float64 {
@@ -455,7 +482,6 @@ func (m *Model) predict(text string) float64 {
 
 	context, _, _ := attention.DotProductAttention(queries[0], keys, values)
 
-	// Final prediction
 	logit := dotProduct(context, m.OutputWeights)
 	return sigmoid(logit)
 }
@@ -501,7 +527,7 @@ func main() {
 	fmt.Printf("Loaded %d examples from IMDB dataset\n", len(examples))
 
 	// Create and train model
-	model := NewModel(10000, 64, 32) // vocab size: 10000, embed dim: 64, attention dim: 32
+	model := NewModel(10000, 64, 64) // vocab size: 10000, embed dim: 64, attention dim: 32
 
 	fmt.Println("Training model...")
 	if err := model.Train(examples, 10, 0.01); err != nil { // More epochs, higher learning rate
@@ -515,6 +541,6 @@ func main() {
 	fmt.Println("Model saved to sentiment_model.json")
 
 	tests, err := loadIMDBData("examples/data/test.json")
-	ans := model.Predict(tests)
-	fmt.Println("ans: ", ans)
+	ans, f1 := model.Predict(tests)
+	fmt.Println("ans: ", ans, " f1: ", f1)
 }
